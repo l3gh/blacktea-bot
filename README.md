@@ -8,7 +8,8 @@ A single-purpose Discord bot for Blacktea word survival. It includes a bundled E
 - `/stats [member]` shows wins, games, best survival streak, correct answers, and average letters per correct answer across all servers where the bot has recorded a game, all in one embed.
 - `/leaderboard` shows global standings across all servers where the bot has recorded a game.
 - `/rules` explains the game.
-- When `BLACKTEA_LOG_WEBHOOK_URL` is set in `.env`, game starts and ends are logged to that Discord webhook. End logs group each player's result and accepted answers by player, in the order they answered.
+- `/restart` restarts the bot; only the application owner can use it.
+- When `BLACKTEA_LOG_WEBHOOK_URL` is set in `.env`, startup, slash command use (including options) and errors, and game starts and ends are logged to that Discord webhook. End logs group each player's result and accepted answers by player, in the order they answered.
 - On `/blacktea`, choose an 8–30 second join window (default 20 seconds), a 5–15 second turn timer (default 10 seconds), and 1–10 starting lives per player (default 3).
 - Choose **Easy** (top 250 ranked sequences), **Medium** (top 1,000), **Hard** (top 2,500), or **Insane** (ranks 500–2,500).
 - A game's selected prompt pool is shuffled and used without repeats until exhausted; then the pool is reshuffled for another cycle.

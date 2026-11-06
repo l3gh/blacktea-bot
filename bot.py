@@ -4,8 +4,10 @@ import os
 import random
 import re
 import sqlite3
+import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 import discord
@@ -41,7 +43,8 @@ DIFFICULTY_LABELS = {
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+bot = commands.Bot(command_prefix="!", intents=intents, help_command=None,
+                   activity=discord.Game(name="Restarted"))
 DB = sqlite3.connect(ROOT / "blacktea.sqlite3")
 DB.execute("PRAGMA journal_mode=WAL")
 DB.execute("PRAGMA synchronous=NORMAL")
@@ -115,6 +118,36 @@ async def send_webhook_log(embeds: list[discord.Embed]):
             await asyncio.wait_for(webhook.send(embeds=batch, username="Blacktea Logs", allowed_mentions=discord.AllowedMentions.none()), timeout=10)
     except Exception as exc:
         print(f"Webhook logging failed: {type(exc).__name__}")
+
+async def log_event(title: str, description: str, *, error: bool = False):
+    embed = discord.Embed(
+        title=title[:256], description=description[:4096],
+        color=discord.Color.red() if error else discord.Color.green(),
+        timestamp=datetime.now(timezone.utc),
+    )
+    await send_webhook_log([embed])
+
+def log_location(guild, channel, user):
+    def label(value):
+        return discord.utils.escape_markdown(str(value))[:200]
+    return (f"Server: **{label(getattr(guild, 'name', 'Direct message'))}**\n"
+            f"Channel: **{label(getattr(channel, 'name', 'Unknown'))}**\n"
+            f"User: **{label(getattr(user, 'display_name', 'Unknown'))}** "
+            f"(`{getattr(user, 'id', 'unknown')}`)")
+
+def format_command_options(options):
+    parts = []
+    for option in options:
+        name = discord.utils.escape_markdown(str(option.get("name", "unknown")))
+        if option.get("type") in (1, 2):
+            parts.append(name)
+            parts.extend(format_command_options(option.get("options", [])))
+        elif "value" in option:
+            value = option["value"]
+            if option.get("type") == 6:
+                value = f"<@{value}>"
+            parts.append(f"{name}: {discord.utils.escape_markdown(str(value))}")
+    return parts
 
 async def log_game_start(game: Game):
     players = sorted((p.user.display_name for p in game.players.values()), key=str.casefold)
@@ -253,12 +286,8 @@ commands_synced = False
 startup_presence_started = False
 
 async def show_restart_status():
-    try:
-        await bot.change_presence(activity=discord.Game(name="✅ just restarted! ✅"))
-        await asyncio.sleep(5)
-        await bot.change_presence(activity=None)
-    except discord.HTTPException as exc:
-        print(f"Restart status update failed: {type(exc).__name__}")
+    await asyncio.sleep(5)
+    await bot.change_presence(activity=discord.Game(name="BlackTea"))
 
 @bot.event
 async def on_ready():
@@ -266,10 +295,43 @@ async def on_ready():
     if not startup_presence_started:
         startup_presence_started = True
         asyncio.create_task(show_restart_status())
+        await log_event("Blacktea bot started", "Connected to Discord.")
     if not commands_synced:
         await bot.tree.sync()
         commands_synced = True
     print(f"Blacktea bot ready as {bot.user} | loaded {len(WORDS):,} words")
+
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    if interaction.type == discord.InteractionType.application_command:
+        data = interaction.data or {}
+        name = discord.utils.escape_markdown(str(data.get("name", "unknown")))
+        options = format_command_options(data.get("options", []))
+        command = f"/{name}" + (" " + " ".join(options) if options else "")
+        await log_event("Command used", f"Command: {command}\n" + log_location(
+            interaction.guild, interaction.channel, interaction.user))
+
+@bot.tree.error
+async def command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    print(f"Slash command failed: {error}", file=sys.stderr)
+    await log_event("Slash command failed", f"Error: `{type(error).__name__}`", error=True)
+    message = f"That command failed: {str(error)[:1200]}"
+    if interaction.response.is_done():
+        await interaction.followup.send(message)
+    else:
+        await interaction.response.send_message(message)
+
+@bot.tree.command(name="restart", description="Restart the Blacktea bot")
+async def restart_command(interaction: discord.Interaction):
+    if not await bot.is_owner(interaction.user):
+        await interaction.response.send_message("You can't use this command because you don't own this bot.", ephemeral=True)
+        return
+
+    await interaction.response.send_message("Restarting the bot now.", ephemeral=True)
+    await bot.change_presence(activity=discord.Game(name="Restarting.."))
+    await asyncio.sleep(1)
+    await bot.close()
+    os.execv(sys.executable, [sys.executable, *sys.argv])
 
 @bot.event
 async def on_message(message: discord.Message):
