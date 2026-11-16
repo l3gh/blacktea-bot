@@ -44,7 +44,7 @@ DIFFICULTY_LABELS = {
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None,
-                   activity=discord.Game(name="Restarted"))
+                   activity=discord.Game(name="BlackTea"))
 DB = sqlite3.connect(ROOT / "blacktea.sqlite3")
 DB.execute("PRAGMA journal_mode=WAL")
 DB.execute("PRAGMA synchronous=NORMAL")
